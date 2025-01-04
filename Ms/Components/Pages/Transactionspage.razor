@@ -1,0 +1,200 @@
+@page "/transactionspage"
+@using Ms.Models
+@inject UserService UserService
+
+<h1>User Transactions</h1>
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Transaction ID</th>
+            <th>Main Balance</th>
+            <th>Type</th>
+            <th>Debit</th>
+            <th>Credit</th>
+            <th>Tags</th>
+            <th>Date</th>
+            <th>Description</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var transaction in Data.Transactions)
+        {
+            <tr>
+                <td>@transaction.Id</td>
+                <td>@(Data.Transactions.Sum(t => t.Credit) - Data.Transactions.Sum(t => t.Debit))</td>
+                <td>@transaction.Type</td>
+                <td>@transaction.Debit</td>
+                <td>@transaction.Credit</td>
+                <td>@string.Join(", ", transaction.Tags ?? new List<string>())</td>
+                <td>@transaction.Date.ToString("MM/dd/yyyy")</td>
+                <td>@transaction.Description</td>
+                <td>
+                    <button class="btn btn-warning" @onclick="() => EditTransaction(transaction)">Edit</button>
+                    <button class="btn btn-danger" @onclick="() => DeleteTransaction(transaction.Id)">Delete</button>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+<h2>@(isEditMode ? "Edit" : "Add New") Transaction</h2>
+<EditForm Model="newTransaction" OnValidSubmit="HandleTransactionSubmit">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="form-group">
+        <label for="type">Transaction Type</label>
+        <InputSelect id="type" @bind-Value="newTransaction.Type" class="form-control" @onchange="OnTransactionTypeChange">
+            <option value="">Select Type</option>
+            <option value="Credit">Credit</option>
+            <option value="Debit">Debit</option>
+        </InputSelect>
+    </div>
+
+    @if (newTransaction.Type == "Credit" || newTransaction.Type == "Debit")
+    {
+        <div class="form-group">
+            <label for="amount">Amount (@(newTransaction.Type))</label>
+            <InputNumber id="amount" @bind-Value="newTransaction.Amount" class="form-control" />
+            @if (newTransaction.Type == "Debit" && !IsSufficientBalance(newTransaction.Amount))
+            {
+                <span class="text-danger">Insufficient balance for this outflow.</span>
+            }
+        </div>
+
+        <div class="form-group">
+            <label for="tags">Tags (Select One or More)</label>
+            <select multiple class="form-control" @onchange="OnTagsChange">
+                @foreach (var tag in defaultTags)
+                {
+                    <option value="@tag" selected="@(selectedTags.Contains(tag))">@tag</option>
+                }
+            </select>
+        </div>
+    }
+
+    <div class="form-group">
+        <label for="description">Description</label>
+        <InputText id="description" @bind-Value="newTransaction.Description" class="form-control" />
+    </div>
+
+    <div class="form-group">
+        <button type="submit" class="btn btn-primary" disabled="@(!CanSubmitTransaction())">@(isEditMode ? "Update" : "Add") Transaction</button>
+    </div>
+</EditForm>
+
+@code {
+    private AppData Data;
+    private Transaction newTransaction = new Transaction();
+    private List<string> defaultTags = new List<string>
+    {
+        "Yearly", "Monthly", "Food", "Drinks", "Clothes", "Gadgets", "Miscellaneous", "Fuel", "Rent", "EMI", "Party"
+    };
+
+    private List<string> selectedTags = new List<string>();
+    private bool isEditMode = false;
+
+    protected override void OnInitialized()
+    {
+        Data = UserService.LoadData();
+        newTransaction.Date = DateTime.Now;
+    }
+
+    private void HandleTransactionSubmit()
+    {
+        newTransaction.Date = DateTime.Now;
+
+        if (isEditMode)
+        {
+            var transaction = Data.Transactions.FirstOrDefault(t => t.Id == newTransaction.Id);
+            if (transaction != null)
+            {
+                transaction.Type = newTransaction.Type;
+                transaction.Amount = newTransaction.Amount;
+                transaction.Tags = new List<string>(selectedTags);
+                transaction.Description = newTransaction.Description;
+            }
+        }
+        else
+        {
+            newTransaction.Id = Data.Transactions.Count + 1;
+            newTransaction.Tags = new List<string>(selectedTags);
+            if (newTransaction.Type == "Credit")
+            {
+                newTransaction.Credit = newTransaction.Amount;
+                newTransaction.Debit = 0;
+            }
+            else if (newTransaction.Type == "Debit")
+            {
+                newTransaction.Debit = newTransaction.Amount;
+                newTransaction.Credit = 0;
+            }
+            Data.Transactions.Add(newTransaction);
+        }
+
+        UserService.SaveData(Data);
+        newTransaction = new Transaction { Date = DateTime.Now };
+        selectedTags.Clear();
+        isEditMode = false;
+    }
+
+    private void OnTransactionTypeChange(ChangeEventArgs e)
+    {
+        newTransaction.Type = e.Value.ToString();
+    }
+
+    private void OnTagsChange(ChangeEventArgs e)
+    {
+        if (e.Value is IEnumerable<string> selected)
+        {
+            selectedTags = selected.ToList();
+        }
+        else if (e.Value is string singleValue)
+        {
+            selectedTags = singleValue.Split(',').Select(s => s.Trim()).ToList();
+        }
+        newTransaction.Tags = new List<string>(selectedTags);
+    }
+
+    private bool IsSufficientBalance(decimal outflow)
+    {
+        var currentBalance = Data.Transactions.Sum(t => t.Credit) - Data.Transactions.Sum(t => t.Debit);
+        return outflow <= currentBalance;
+    }
+
+    private bool CanSubmitTransaction()
+    {
+        if (newTransaction.Type == "Debit")
+        {
+            return IsSufficientBalance(newTransaction.Amount);
+        }
+        return true;
+    }
+
+    private void EditTransaction(Transaction transaction)
+    {
+        newTransaction = new Transaction
+            {
+                Id = transaction.Id,
+                Type = transaction.Type,
+                Amount = transaction.Type == "Credit" ? transaction.Credit : transaction.Debit,
+                Tags = new List<string>(transaction.Tags ?? new List<string>()),
+                Date = transaction.Date,
+                Description = transaction.Description
+            };
+        selectedTags = new List<string>(transaction.Tags ?? new List<string>());
+        isEditMode = true;
+    }
+
+    private void DeleteTransaction(int id)
+    {
+        var transaction = Data.Transactions.FirstOrDefault(t => t.Id == id);
+        if (transaction != null)
+        {
+            Data.Transactions.Remove(transaction);
+            UserService.SaveData(Data);
+        }
+    }
+}
