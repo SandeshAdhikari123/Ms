@@ -71,9 +71,52 @@
         newDebt.Id = Data.Debts.Count + 1;
         newDebt.Date = DateTime.Now;
         Data.Debts.Add(newDebt);
+        // Deduct the PaidAmount from the Main Balance
+        if (newDebt.PaidAmount > 0)
+        {
+            var balance = Data.Transactions.Sum(t => t.Credit) - Data.Transactions.Sum(t => t.Debit);
+
+            if (newDebt.PaidAmount > balance)
+            {
+                // Prevent overdraft
+                Console.WriteLine("Insufficient funds to pay this debt.");
+                return;
+            }
+
+            // Create a new debit transaction for the debt payment
+            var debtPaymentTransaction = new Transaction
+                {
+                    Id = Data.Transactions.Count + 1,
+                    Type = "Debit",
+                    Debit = newDebt.PaidAmount,
+                    Credit = 0,
+                    Date = DateTime.Now,
+                    Description = $"Debt Payment: {newDebt.Description}",
+                    Tags = new List<string> { "Debt Payment" }
+                };
+            // Create a new credit transaction for the debt taken
+            var debtTransaction = new Transaction
+                {
+                    Id = Data.Transactions.Count + 1,
+                    Type = "Credit",
+                    Credit = newDebt.Amount,  // The debt amount is added to the main balance
+                    Debit = 0,
+                    Date = DateTime.Now,
+                    Description = $"Debt Taken: {newDebt.Description}",
+                    Tags = new List<string> { "Debt Taken" }
+                };
+
+            Data.Transactions.Add(debtTransaction);
+
+
+            Data.Transactions.Add(debtPaymentTransaction);
+        }
+
         UserService.SaveData(Data);
 
         // Reset form
         newDebt = new Debt();
+    }
+      
     }
 }

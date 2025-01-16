@@ -23,7 +23,9 @@
         {
             <tr>
                 <td>@transaction.Id</td>
-                <td>@(Data.Transactions.Sum(t => t.Credit) - Data.Transactions.Sum(t => t.Debit))</td>
+                 <td>@(Data.Transactions.Sum(t => t.Credit) - Data.Transactions.Sum(t => t.Debit))</td> *
+    
+
                 <td>@transaction.Type</td>
                 <td>@transaction.Debit</td>
                 <td>@transaction.Credit</td>

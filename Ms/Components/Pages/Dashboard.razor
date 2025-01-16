@@ -1,4 +1,4 @@
-@page "/"
+@page "/dashboard"
 @using Ms.Models
 @inject UserService UserService
 
@@ -13,6 +13,7 @@
             <li>Total Debts: @(Data.Debts.Sum(d => d.Amount))</li>
             <li>Cleared Debts: @(Data.Debts.Sum(d => d.PaidAmount))</li>
             <li>Remaining Debts: @(Data.Debts.Sum(d => d.Amount - d.PaidAmount))</li>
+            <li><strong>Total Balance: @TotalBalance</strong></li> <!-- Add Total Balance here -->
         </ul>
     </div>
 
@@ -24,7 +25,7 @@
             <li>Highest Outflow: @(Data.Transactions.Where(t => t.Debit > 0).DefaultIfEmpty().Max(t => t?.Debit ?? 0))</li>
             <li>Lowest Outflow: @(Data.Transactions.Where(t => t.Debit > 0).DefaultIfEmpty().Min(t => t?.Debit ?? 0))</li>
             <li>Highest Debt: @(Data.Debts.DefaultIfEmpty().Max(d => d?.Amount ?? 0))</li>
-            <li>Lowest Debt: @(Data.Debts.DefaultIfEmpty().Min(d => d?.Amount ?? 0))</li>
+            <li>Lowest Debt: @(Data.Debts?.Any() == true ? Data.Debts.Where(d => d != null && d.Amount > 0).DefaultIfEmpty(new Debt { Amount = 0 }).Min(d => d.Amount) : 0)</li>
         </ul>
     </div>
 
@@ -49,13 +50,27 @@
 <h2>Transaction List</h2>
 <div>
     <input type="text" @bind="searchTerm" placeholder="Search by description" class="form-control mb-2" />
+
+    <label>From Date:</label>
+    <input type="date" @bind="fromDate" class="form-control mb-2" />
+
+    <label>To Date:</label>
+    <input type="date" @bind="toDate" class="form-control mb-2" />
+
     <select @bind="filterType" class="form-control mb-2">
         <option value="">All</option>
         <option value="Credit">Credit</option>
         <option value="Debit">Debit</option>
         <option value="Debt">Debt</option>
     </select>
+
     <button @onclick="FilterTransactions" class="btn btn-primary mb-2">Filter</button>
+
+    <select @bind="sortOrder" @bind:event="onchange" @bind:after="SortTransactions" class="form-control mb-2">
+        <option value="">Sort by Amount (None)</option>
+        <option value="asc">Amount (Low to High)</option>
+        <option value="desc">Amount (High to Low)</option>
+    </select>
 </div>
 
 <table class="table">
@@ -86,6 +101,9 @@
     private AppData Data;
     private string searchTerm = "";
     private string filterType = "";
+    private string sortOrder = "";
+    private DateTime? fromDate;
+    private DateTime? toDate;
     private IEnumerable<Transaction> filteredTransactions;
 
     protected override void OnInitialized()
@@ -94,12 +112,29 @@
         filteredTransactions = Data.Transactions;
     }
 
+    // Property to calculate the total balance
+    private decimal TotalBalance => Data.Transactions.Sum(t => t.Credit) - Data.Transactions.Sum(t => t.Debit);
+
     private void FilterTransactions()
     {
         filteredTransactions = Data.Transactions
             .Where(t => string.IsNullOrWhiteSpace(searchTerm) || t.Description.Contains(searchTerm, StringComparison.OrdinalIgnoreCase))
             .Where(t => string.IsNullOrWhiteSpace(filterType) ||
                         (filterType == "Credit" && t.Credit > 0) ||
-                        (filterType == "Debit" && t.Debit > 0));
+                        (filterType == "Debit" && t.Debit > 0))
+            .Where(t => !fromDate.HasValue || t.Date >= fromDate.Value) // Filter by start date
+            .Where(t => !toDate.HasValue || t.Date <= toDate.Value); // Filter by end date
+
+        SortTransactions(); // Ensure sorting applies after filtering
+    }
+
+    private void SortTransactions()
+    {
+        if (!string.IsNullOrEmpty(sortOrder))
+        {
+            filteredTransactions = sortOrder == "asc"
+                ? filteredTransactions.OrderBy(t => t.Credit > 0 ? t.Credit : t.Debit)
+                : filteredTransactions.OrderByDescending(t => t.Credit > 0 ? t.Credit : t.Debit);
+        }
     }
 }

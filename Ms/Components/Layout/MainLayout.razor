@@ -1,17 +1,21 @@
 ﻿@inherits LayoutComponentBase
+@inject NavigationManager NavigationManager
+@using Ms.Models
 
 <div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
-
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+    @if (!IsHomePage)
+    {
+        <div class="sidebar">
+            <NavMenu />
         </div>
-
+    }
+    <main>
         <article class="content px-4">
             @Body
         </article>
     </main>
 </div>
+@code {
+    // Determine if the current page is the home page ("/")
+    private bool IsHomePage => NavigationManager.Uri.EndsWith("/") || NavigationManager.Uri.EndsWith("/login");
+}
